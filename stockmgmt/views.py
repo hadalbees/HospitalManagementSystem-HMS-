@@ -1688,3 +1688,49 @@ class StockPrintView(BaseExportStockView):
             "today": today,
         }
         return render(request, "stockmgmt/stock_print.html", context)
+
+@login_required
+def superadmin_reset_import_stock(request):
+    """
+    STRICT SUPER ADMIN ONLY:
+    Deletes existing stock and cleanly imports fresh stock from Excel/CSV
+    without foreign key or format issues.
+    """
+    if not request.user.is_superuser:
+        _safe_message(request, 'error', "Permission Denied: Only Super Admin can perform stock reset and import.")
+        return HttpResponseForbidden("Access Denied: Super Admin only.")
+
+    if request.method == "POST":
+        uploaded_file = request.FILES.get("stock_file")
+        clear_existing = request.POST.get("clear_existing", "true") == "true"
+
+        if uploaded_file:
+            source = uploaded_file
+        else:
+            from django.conf import settings
+            user_sheet_path = os.path.join(settings.BASE_DIR, "user_stock_sheet.csv")
+            default_path = os.path.join(settings.BASE_DIR, "August pharmacy stock.xlsx")
+            if os.path.exists(user_sheet_path):
+                source = user_sheet_path
+            elif os.path.exists(default_path):
+                source = default_path
+            else:
+                _safe_message(request, 'error', "Default stock file not found.")
+                return redirect("stockmgmt:stock_list")
+
+        try:
+            stats = reset_and_import_stock(
+                file_path_or_df=source,
+                user=request.user,
+                clear_existing_stock=clear_existing
+            )
+            _safe_message(
+                request,
+                'success',
+                f"Stock successfully reset & imported! Old deleted: {stats['deleted_stocks']}, New items created: {stats['created_stocks']}."
+            )
+        except Exception as e:
+            _safe_message(request, 'error', f"Stock import failed: {str(e)}")
+
+    return redirect("stockmgmt:stock_list")
+

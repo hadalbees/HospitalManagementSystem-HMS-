@@ -229,6 +229,11 @@
                 <div class="card-header bg-white d-flex justify-content-between align-items-center py-3 border-bottom">
                     <h5 class="mb-0 fw-bold text-dark">Medicine Stock List</h5>
                     <div class="d-flex align-items-center gap-2">
+                        {% if request.user.is_superuser %}
+                        <button class="btn btn-sm btn-danger shadow-sm text-white" data-bs-toggle="modal" data-bs-target="#superAdminResetStockModal" title="Super Admin Only">
+                            <i class="fas fa-sync-alt me-1"></i> Reset & Import Stock
+                        </button>
+                        {% endif %}
                         <div class="dropdown">
                             <button class="btn btn-sm btn-outline-custom-green dropdown-toggle" type="button"
                                 data-bs-toggle="dropdown" aria-expanded="false">
@@ -632,6 +637,51 @@
         });
 
     </script>
+
+{% if request.user.is_superuser %}
+<!-- Super Admin Reset Stock Modal -->
+<div class="modal fade" id="superAdminResetStockModal" tabindex="-1" aria-labelledby="superAdminResetStockModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title fw-bold text-white mb-0" id="superAdminResetStockModalLabel">
+                    <i class="fas fa-shield-alt me-2"></i> Super Admin: Reset & Import Stock
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{% url 'stockmgmt:superadmin_reset_import_stock' %}" method="POST" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="modal-body p-4">
+                    <div class="alert alert-warning border-0 small mb-3">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Super Admin Restriction:</strong> This action will delete existing stock and import fresh stock cleanly, resolving all foreign keys automatically.
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-muted">Upload Excel / CSV File (Optional):</label>
+                        <input type="file" name="stock_file" class="form-control" accept=".xlsx,.xls,.csv">
+                        <small class="text-muted d-block mt-1">If empty, the system automatically uses <strong>August pharmacy stock.xlsx</strong>.</small>
+                    </div>
+
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="clear_existing" value="true" id="clearExistingStock" checked>
+                        <label class="form-check-label fw-semibold text-danger small" for="clearExistingStock">
+                            Delete existing stock before importing
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger btn-sm px-4 fw-bold">
+                        <i class="fas fa-trash-alt me-1"></i> Confirm & Reset Stock
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 </body>
 
 </html>

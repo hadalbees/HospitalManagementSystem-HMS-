@@ -20,4 +20,5 @@ urlpatterns = [
     ),
     path("stock/export/excel/", views.ExportStockExcelView.as_view(), name="export_excel"),
     path("stock/export/print/", views.StockPrintView.as_view(), name="export_print"),
+        path("superadmin/reset-import-stock/", views.superadmin_reset_import_stock, name="superadmin_reset_import_stock"),
 ]

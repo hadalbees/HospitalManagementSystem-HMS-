@@ -1688,6 +1688,22 @@ class StockPrintView(BaseExportStockView):
             "today": today,
         }
         return render(request, "stockmgmt/stock_print.html", context)
+    
+    
+# --------------------------------------------------
+# Super Admin Only: Reset & Import Stock
+# --------------------------------------------------
+from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
+from django.http import HttpResponseForbidden
+from .stock_importer import reset_and_import_stock
+import os
+
+def _safe_message(request, level, text):
+    try:
+        getattr(messages, level)(request, text)
+    except Exception:
+        pass
 
 @login_required
 def superadmin_reset_import_stock(request):

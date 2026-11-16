@@ -193,5 +193,5 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-WHATSAPP_PHONE_NUMBER_ID = ""
-WHATSAPP_TOKEN = "YOUR_ACCESS_TOKEN"
+WHATSAPP_PHONE_NUMBER_ID = config('WHATSAPP_PHONE_NUMBER_ID', default='')
+WHATSAPP_TOKEN = config('WHATSAPP_TOKEN', default='')

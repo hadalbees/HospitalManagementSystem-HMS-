@@ -49,6 +49,8 @@ from utils.whatsapp import (
     send_whatsapp_text,
     send_whatsapp_image,
     send_whatsapp_document,
+    send_whatsapp_template,
+    upload_whatsapp_media,
     format_phone
 )
 # optional libs
@@ -1280,29 +1282,53 @@ def whatsapp_broadcast_view(request):
         image = request.FILES.get("image")
         document = request.FILES.get("document")
 
-        phone_numbers = []
+        recipients = []
 
         if send_all:
-            phone_numbers = list(patients.values_list("phone", flat=True))
+            for p in patients:
+                if p.phone:
+                    recipients.append((p.phone, p.patient_name, p))
         elif selected_ids:
-            phone_numbers = list(
-                Patient.objects.filter(id__in=selected_ids)
-                .values_list("phone", flat=True)
-            )
+            for p in Patient.objects.filter(id__in=selected_ids):
+                if p.phone:
+                    recipients.append((p.phone, p.patient_name, p))
         elif manual_numbers:
-            phone_numbers = [n.strip() for n in manual_numbers.split(",")]
+            for n in manual_numbers.split(","):
+                num = n.strip()
+                if num:
+                    clean_digits = "".join(filter(str.isdigit, num))
+                    matched = None
+                    if len(clean_digits) >= 10:
+                        matched = Patient.objects.filter(phone__icontains=clean_digits[-10:]).first()
+                    p_name = matched.patient_name if matched else "Patient"
+                    recipients.append((num, p_name, matched))
         else:
             messages.error(request, "Select at least one recipient")
             return redirect("patientmgmt:whatsapp_send")
 
+        # Pre-upload media to Meta once for fast bulk sending & localhost support
+        image_media_id = None
+        if image:
+            image_media_id = upload_whatsapp_media(image)
+
+        doc_media_id = None
+        if document:
+            doc_media_id = upload_whatsapp_media(document)
+
         sent = 0
 
-        for phone in phone_numbers:
+        for phone, p_name, p_obj in recipients:
             phone_fmt = format_phone(phone)
             if not phone_fmt:
                 continue
 
+            if image:
+                image.seek(0)
+            if document:
+                document.seek(0)
+
             log = WhatsAppLog.objects.create(
+                patient=p_obj,
                 phone=phone_fmt,
                 message=message,
                 image=image,
@@ -1311,18 +1337,48 @@ def whatsapp_broadcast_view(request):
             )
 
             try:
-                res = send_whatsapp_text(phone_fmt, message)
+                if message:
+                    # 1. Try sending via approved Template first (bypasses 24-hr restriction for bulk delivery)
+                    template_params = [
+                        {"type": "text", "text": str(p_name or "Patient")},
+                        {"type": "text", "text": str(message)}
+                    ]
+                    res = send_whatsapp_template(
+                        to=phone_fmt,
+                        template_name="patient_visit_update",
+                        template_params=template_params,
+                        language_code="en"
+                    )
 
-                if res.get("error"):
-                    raise Exception(res["error"]["message"])
+                    # If template language code was en_US in Meta
+                    if res.get("error") and res["error"].get("code") in [132001, 100]:
+                        res = send_whatsapp_template(
+                            to=phone_fmt,
+                            template_name="patient_visit_update",
+                            template_params=template_params,
+                            language_code="en_US"
+                        )
 
-                if image:
-                    image_url = request.build_absolute_uri(image.file.url)
-                    send_whatsapp_image(phone_fmt, image_url)
+                    # If template is not ready or failed, try direct text fallback (for active 24h chats)
+                    if res.get("error"):
+                        fallback_res = send_whatsapp_text(phone_fmt, message)
+                        if not fallback_res.get("error"):
+                            res = fallback_res
+                        else:
+                            raise Exception(res["error"].get("message", "Failed to send WhatsApp message"))
 
-                if document:
-                    doc_url = request.build_absolute_uri(document.file.url)
-                    send_whatsapp_document(phone_fmt, doc_url, document.name)
+                if image and log.image:
+                    img_source = image_media_id or request.build_absolute_uri(log.image.url)
+                    img_res = send_whatsapp_image(phone_fmt, img_source)
+                    if img_res.get("error"):
+                        raise Exception(img_res["error"].get("message", "Failed to send image"))
+
+                if document and log.document:
+                    doc_source = doc_media_id or request.build_absolute_uri(log.document.url)
+                    doc_name = document.name if hasattr(document, "name") else "document.pdf"
+                    doc_res = send_whatsapp_document(phone_fmt, doc_source, doc_name)
+                    if doc_res.get("error"):
+                        raise Exception(doc_res["error"].get("message", "Failed to send document"))
 
                 log.status = "sent"
                 sent += 1
